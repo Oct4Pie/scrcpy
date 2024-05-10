@@ -378,7 +378,7 @@ bool sc_screen_init(struct sc_screen* screen,
              sc_orientation_get_name(screen->orientation));
     }
 
-    uint32_t window_flags =  SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+    uint32_t window_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
     if (params->always_on_top) {
         window_flags |= SDL_WINDOW_ALWAYS_ON_TOP;
     }
@@ -767,8 +767,10 @@ bool sc_screen_handle_event(struct sc_screen* screen, const SDL_Event* event) {
                     break;
                 case SDL_WINDOWEVENT_SIZE_CHANGED:
                     sc_screen_render(screen, true);
+                    
                     break;
                 case SDL_WINDOWEVENT_MAXIMIZED:
+                    sc_keymap_screen_handle_resize(&screen->keymap_screen);
                     screen->maximized = true;
                     break;
                 case SDL_WINDOWEVENT_MINIMIZED:

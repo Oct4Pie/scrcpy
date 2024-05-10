@@ -102,8 +102,8 @@ void sc_keymap_screen_add_circle(struct sc_keymap_screen* screen, int w, int h, 
         radius *= 5;
     }
 
-    double x_ratio = 0.5;
-    double y_ratio = 0.5;
+    double x_ratio = 0.5 * screen->dpi_x;
+    double y_ratio = 0.5 * screen->dpi_y;
 
     // Create texture for the circle
     SDL_Texture* texture = SDL_CreateTexture(screen->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, 2 * radius + 1, 2 * radius + 1);
@@ -122,7 +122,7 @@ void sc_keymap_screen_add_circle(struct sc_keymap_screen* screen, int w, int h, 
     // Set circle properties
     screen->circles[screen->num_circles] = (Circle){
         .texture = texture,
-        .position = {w, h},
+        .position = {w * x_ratio, h * y_ratio},
         .x_ratio = x_ratio,
         .y_ratio = y_ratio,
         .isSelected = false,
@@ -138,6 +138,7 @@ void sc_keymap_screen_add_circle(struct sc_keymap_screen* screen, int w, int h, 
 }
 
 void draw_filled_circle(SDL_Renderer* renderer, SDL_Texture* texture, int x, int y, int radius) {
+    printf("x: %d y: %d\n", x, y);
     if (texture == NULL) {
         SDL_Log("Texture not found");
         return;
@@ -244,8 +245,9 @@ void sc_keymap_screen_handle_resize(struct sc_keymap_screen* screen) {
     SDL_GetWindowSize(screen->window, &window_width, &window_height);
 
     for (int i = 0; i < screen->num_circles; i++) {
-        screen->circles[i].position.x = (int)(screen->circles[i].x_ratio * window_width) * screen->dpi_x;
-        screen->circles[i].position.y = (int)(screen->circles[i].y_ratio * window_height) * screen->dpi_y;
+        screen->circles[i].radius *= (double)(window_width) / (double)(screen->window_width);
+        screen->circles[i].position.x = (int)(screen->circles[i].x_ratio * window_width);
+        screen->circles[i].position.y = (int)(screen->circles[i].y_ratio * window_height);
     }
 
     screen->window_height = window_height;
