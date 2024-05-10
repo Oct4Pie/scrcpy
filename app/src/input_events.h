@@ -3,10 +3,10 @@
 
 #include "common.h"
 
+#include <SDL2/SDL_events.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <SDL2/SDL_events.h>
 
 #include "coords.h"
 
@@ -57,8 +57,8 @@ enum sc_mod {
 };
 
 enum sc_action {
-    SC_ACTION_DOWN, // key or button pressed
-    SC_ACTION_UP, // key or button released
+    SC_ACTION_DOWN,  // key or button pressed
+    SC_ACTION_UP,    // key or button released
 };
 
 enum sc_keycode {
@@ -341,12 +341,12 @@ struct sc_key_event {
     enum sc_action action;
     enum sc_keycode keycode;
     enum sc_scancode scancode;
-    uint16_t mods_state; // bitwise-OR of sc_mod values
+    uint16_t mods_state;  // bitwise-OR of sc_mod values
     bool repeat;
 };
 
 struct sc_text_event {
-    const char *text; // not owned
+    const char* text;  // not owned
 };
 
 struct sc_mouse_click_event {
@@ -354,14 +354,14 @@ struct sc_mouse_click_event {
     enum sc_action action;
     enum sc_mouse_button button;
     uint64_t pointer_id;
-    uint8_t buttons_state; // bitwise-OR of sc_mouse_button values
+    uint8_t buttons_state;  // bitwise-OR of sc_mouse_button values
 };
 
 struct sc_mouse_scroll_event {
     struct sc_position position;
     float hscroll;
     float vscroll;
-    uint8_t buttons_state; // bitwise-OR of sc_mouse_button values
+    uint8_t buttons_state;  // bitwise-OR of sc_mouse_button values
 };
 
 struct sc_mouse_motion_event {
@@ -369,7 +369,7 @@ struct sc_mouse_motion_event {
     uint64_t pointer_id;
     int32_t xrel;
     int32_t yrel;
-    uint8_t buttons_state; // bitwise-OR of sc_mouse_button values
+    uint8_t buttons_state;  // bitwise-OR of sc_mouse_button values
 };
 
 struct sc_touch_event {
@@ -386,12 +386,12 @@ sc_mods_state_from_sdl(uint16_t mods_state) {
 
 static inline enum sc_keycode
 sc_keycode_from_sdl(SDL_Keycode keycode) {
-    return (enum sc_keycode) keycode;
+    return (enum sc_keycode)keycode;
 }
 
 static inline enum sc_scancode
 sc_scancode_from_sdl(SDL_Scancode scancode) {
-    return (enum sc_scancode) scancode;
+    return (enum sc_scancode)scancode;
 }
 
 static inline enum sc_action
@@ -438,14 +438,11 @@ sc_mouse_button_from_sdl(uint8_t button) {
 static inline uint8_t
 sc_mouse_buttons_state_from_sdl(uint32_t buttons_state,
                                 bool forward_all_clicks) {
-    assert(buttons_state < 0x100); // fits in uint8_t
+    assert(buttons_state < 0x100);  // fits in uint8_t
 
     uint8_t mask = SC_MOUSE_BUTTON_LEFT;
     if (forward_all_clicks) {
-        mask |= SC_MOUSE_BUTTON_RIGHT
-              | SC_MOUSE_BUTTON_MIDDLE
-              | SC_MOUSE_BUTTON_X1
-              | SC_MOUSE_BUTTON_X2;
+        mask |= SC_MOUSE_BUTTON_RIGHT | SC_MOUSE_BUTTON_MIDDLE | SC_MOUSE_BUTTON_X1 | SC_MOUSE_BUTTON_X2;
     }
 
     return buttons_state & mask;

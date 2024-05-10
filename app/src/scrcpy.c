@@ -1,16 +1,16 @@
 #include "scrcpy.h"
 
+#include <SDL2/SDL.h>
+#include <libavformat/avformat.h>
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
-#include <libavformat/avformat.h>
 #include <sys/time.h>
-#include <SDL2/SDL.h>
+#include <unistd.h>
 
 #ifdef _WIN32
 // not needed here, but winsock2.h must never be included AFTER windows.h
-# include <winsock2.h>
-# include <windows.h>
+#include <windows.h>
+#include <winsock2.h>
 #endif
 
 #include "audio_player.h"
@@ -25,13 +25,14 @@
 #include "recorder.h"
 #include "screen.h"
 #include "server.h"
+#include "sidebar.h"
 #include "uhid/keyboard_uhid.h"
 #include "uhid/mouse_uhid.h"
 #ifdef HAVE_USB
-# include "usb/aoa_hid.h"
-# include "usb/keyboard_aoa.h"
-# include "usb/mouse_aoa.h"
-# include "usb/usb.h"
+#include "usb/aoa_hid.h"
+#include "usb/keyboard_aoa.h"
+#include "usb/mouse_aoa.h"
+#include "usb/usb.h"
 #endif
 #include "util/acksync.h"
 #include "util/log.h"
@@ -39,10 +40,11 @@
 #include "util/rand.h"
 #include "util/timeout.h"
 #ifdef HAVE_V4L2
-# include "v4l2_sink.h"
+#include "v4l2_sink.h"
 #endif
 
 struct scrcpy {
+    struct sc_sidebar sidebar;
     struct sc_server server;
     struct sc_screen screen;
     struct sc_audio_player audio_player;
@@ -83,7 +85,7 @@ struct scrcpy {
 };
 
 static inline void
-push_event(uint32_t type, const char *name) {
+push_event(uint32_t type, const char* name) {
     SDL_Event event;
     event.type = type;
     int ret = SDL_PushEvent(&event);
@@ -92,7 +94,7 @@ push_event(uint32_t type, const char *name) {
         // What could we do?
     }
 }
-#define PUSH_EVENT(TYPE) push_event(TYPE, # TYPE)
+#define PUSH_EVENT(TYPE) push_event(TYPE, #TYPE)
 
 #ifdef _WIN32
 static BOOL WINAPI windows_ctrl_handler(DWORD ctrl_type) {
@@ -102,10 +104,10 @@ static BOOL WINAPI windows_ctrl_handler(DWORD ctrl_type) {
     }
     return FALSE;
 }
-#endif // _WIN32
+#endif  // _WIN32
 
 static void
-sdl_set_hints(const char *render_driver) {
+sdl_set_hints(const char* render_driver) {
     if (render_driver && !SDL_SetHint(SDL_HINT_RENDER_DRIVER, render_driver)) {
         LOGW("Could not set render driver");
     }
@@ -150,7 +152,7 @@ sdl_configure(bool video_playback, bool disable_screensaver) {
     if (!ok) {
         LOGW("Could not set Ctrl+C handler");
     }
-#endif // _WIN32
+#endif  // _WIN32
 
     if (!video_playback) {
         return;
@@ -164,7 +166,7 @@ sdl_configure(bool video_playback, bool disable_screensaver) {
 }
 
 static enum scrcpy_exit_code
-event_loop(struct scrcpy *s) {
+event_loop(struct scrcpy* s) {
     SDL_Event event;
     while (SDL_WaitEvent(&event)) {
         switch (event.type) {
@@ -181,11 +183,22 @@ event_loop(struct scrcpy *s) {
                 LOGI("Time limit reached");
                 return SCRCPY_EXIT_SUCCESS;
             case SDL_QUIT:
+                SDL_DestroyWindow(s->sidebar.window);
+                SDL_DestroyRenderer(s->sidebar.renderer);
                 LOGD("User requested to quit");
                 return SCRCPY_EXIT_SUCCESS;
+            case SDL_WINDOWEVENT:
+                if (event.window.event == SDL_WINDOWEVENT_CLOSE && SDL_GetWindowID(s->screen.window) == event.window.windowID) {
+                    SDL_DestroyWindow(s->sidebar.window);
+                    SDL_DestroyRenderer(s->sidebar.renderer);
+                    LOGD("User requested to quit");
+                    return SCRCPY_EXIT_SUCCESS;
+                }
             default:
-                if (!sc_screen_handle_event(&s->screen, &event)) {
-                    return SCRCPY_EXIT_FAILURE;
+                if (!sc_sidebar_handle_event(&s->sidebar, &event)) {
+                    if (!sc_screen_handle_event(&s->screen, &event)) {
+                        return SCRCPY_EXIT_FAILURE;
+                    }
                 }
                 break;
         }
@@ -195,7 +208,7 @@ event_loop(struct scrcpy *s) {
 
 // Return true on success, false on error
 static bool
-await_for_server(bool *connected) {
+await_for_server(bool* connected) {
     SDL_Event event;
     while (SDL_WaitEvent(&event)) {
         switch (event.type) {
@@ -221,10 +234,9 @@ await_for_server(bool *connected) {
 }
 
 static void
-sc_recorder_on_ended(struct sc_recorder *recorder, bool success,
-                     void *userdata) {
-    (void) recorder;
-    (void) userdata;
+sc_recorder_on_ended(struct sc_recorder* recorder, bool success, void* userdata) {
+    (void)recorder;
+    (void)userdata;
 
     if (!success) {
         PUSH_EVENT(SC_EVENT_RECORDER_ERROR);
@@ -232,10 +244,11 @@ sc_recorder_on_ended(struct sc_recorder *recorder, bool success,
 }
 
 static void
-sc_video_demuxer_on_ended(struct sc_demuxer *demuxer,
-                          enum sc_demuxer_status status, void *userdata) {
-    (void) demuxer;
-    (void) userdata;
+sc_video_demuxer_on_ended(struct sc_demuxer* demuxer,
+                          enum sc_demuxer_status status,
+                          void* userdata) {
+    (void)demuxer;
+    (void)userdata;
 
     // The device may not decide to disable the video
     assert(status != SC_DEMUXER_STATUS_DISABLED);
@@ -248,43 +261,42 @@ sc_video_demuxer_on_ended(struct sc_demuxer *demuxer,
 }
 
 static void
-sc_audio_demuxer_on_ended(struct sc_demuxer *demuxer,
-                          enum sc_demuxer_status status, void *userdata) {
-    (void) demuxer;
+sc_audio_demuxer_on_ended(struct sc_demuxer* demuxer,
+                          enum sc_demuxer_status status,
+                          void* userdata) {
+    (void)demuxer;
 
-    const struct scrcpy_options *options = userdata;
+    const struct scrcpy_options* options = userdata;
 
     // Contrary to the video demuxer, keep mirroring if only the audio fails
     // (unless --require-audio is set).
     if (status == SC_DEMUXER_STATUS_EOS) {
         PUSH_EVENT(SC_EVENT_DEVICE_DISCONNECTED);
-    } else if (status == SC_DEMUXER_STATUS_ERROR
-            || (status == SC_DEMUXER_STATUS_DISABLED
-                && options->require_audio)) {
+    } else if (status == SC_DEMUXER_STATUS_ERROR || (status == SC_DEMUXER_STATUS_DISABLED && options->require_audio)) {
         PUSH_EVENT(SC_EVENT_DEMUXER_ERROR);
     }
 }
 
 static void
-sc_server_on_connection_failed(struct sc_server *server, void *userdata) {
-    (void) server;
-    (void) userdata;
+sc_server_on_connection_failed(struct sc_server* server, void* userdata) {
+    (void)server;
+    (void)userdata;
 
     PUSH_EVENT(SC_EVENT_SERVER_CONNECTION_FAILED);
 }
 
 static void
-sc_server_on_connected(struct sc_server *server, void *userdata) {
-    (void) server;
-    (void) userdata;
+sc_server_on_connected(struct sc_server* server, void* userdata) {
+    (void)server;
+    (void)userdata;
 
     PUSH_EVENT(SC_EVENT_SERVER_CONNECTED);
 }
 
 static void
-sc_server_on_disconnected(struct sc_server *server, void *userdata) {
-    (void) server;
-    (void) userdata;
+sc_server_on_disconnected(struct sc_server* server, void* userdata) {
+    (void)server;
+    (void)userdata;
 
     LOGD("Server disconnected");
     // Do nothing, the disconnection will be handled by the "stream stopped"
@@ -292,9 +304,9 @@ sc_server_on_disconnected(struct sc_server *server, void *userdata) {
 }
 
 static void
-sc_timeout_on_timeout(struct sc_timeout *timeout, void *userdata) {
-    (void) timeout;
-    (void) userdata;
+sc_timeout_on_timeout(struct sc_timeout* timeout, void* userdata) {
+    (void)timeout;
+    (void)userdata;
 
     PUSH_EVENT(SC_EVENT_TIME_LIMIT_REACHED);
 }
@@ -309,13 +321,13 @@ scrcpy_generate_scid(void) {
 }
 
 enum scrcpy_exit_code
-scrcpy(struct scrcpy_options *options) {
+scrcpy(struct scrcpy_options* options) {
     static struct scrcpy scrcpy;
 #ifndef NDEBUG
     // Detect missing initializations
     memset(&scrcpy, 42, sizeof(scrcpy));
 #endif
-    struct scrcpy *s = &scrcpy;
+    struct scrcpy* s = &scrcpy;
 
     // Minimal SDL initialization
     if (SDL_Init(SDL_INIT_EVENTS)) {
@@ -347,8 +359,8 @@ scrcpy(struct scrcpy_options *options) {
     bool timeout_initialized = false;
     bool timeout_started = false;
 
-    struct sc_acksync *acksync = NULL;
-    struct sc_uhid_devices *uhid_devices = NULL;
+    struct sc_acksync* acksync = NULL;
+    struct sc_uhid_devices* uhid_devices = NULL;
 
     uint32_t scid = scrcpy_generate_scid();
 
@@ -431,7 +443,7 @@ scrcpy(struct scrcpy_options *options) {
     assert(!options->audio_playback || options->audio);
 
     if (options->video_playback ||
-            (options->control && options->clipboard_autosync)) {
+        (options->control && options->clipboard_autosync)) {
         // Initialize the video subsystem even if --no-video or
         // --no-video-playback is passed so that clipboard synchronization
         // still works.
@@ -473,12 +485,12 @@ scrcpy(struct scrcpy_options *options) {
     LOGD("Server connected");
 
     // It is necessarily initialized here, since the device is connected
-    struct sc_server_info *info = &s->server.info;
+    struct sc_server_info* info = &s->server.info;
 
-    const char *serial = s->server.serial;
+    const char* serial = s->server.serial;
     assert(serial);
 
-    struct sc_file_pusher *fp = NULL;
+    struct sc_file_pusher* fp = NULL;
 
     if (options->video_playback && options->control) {
         if (!sc_file_pusher_init(&s->file_pusher, serial,
@@ -548,9 +560,9 @@ scrcpy(struct scrcpy_options *options) {
         }
     }
 
-    struct sc_controller *controller = NULL;
-    struct sc_key_processor *kp = NULL;
-    struct sc_mouse_processor *mp = NULL;
+    struct sc_controller* controller = NULL;
+    struct sc_key_processor* kp = NULL;
+    struct sc_mouse_processor* mp = NULL;
 
     if (options->control) {
         if (!sc_controller_init(&s->controller, s->server.control_socket)) {
@@ -650,8 +662,7 @@ scrcpy(struct scrcpy_options *options) {
                                  options->key_inject_mode,
                                  options->forward_key_repeat);
             kp = &s->keyboard_sdk.key_processor;
-        } else if (options->keyboard_input_mode
-                == SC_KEYBOARD_INPUT_MODE_UHID) {
+        } else if (options->keyboard_input_mode == SC_KEYBOARD_INPUT_MODE_UHID) {
             sc_uhid_devices_init(&s->uhid_devices);
             bool ok = sc_keyboard_uhid_init(&s->keyboard_uhid, &s->controller,
                                             &s->uhid_devices);
@@ -685,7 +696,7 @@ scrcpy(struct scrcpy_options *options) {
     assert(options->control == !!controller);
 
     if (options->video_playback) {
-        const char *window_title =
+        const char* window_title =
             options->window_title ? options->window_title : info->device_name;
 
         struct sc_screen_params screen_params = {
@@ -710,7 +721,7 @@ scrcpy(struct scrcpy_options *options) {
             .start_fps_counter = options->start_fps_counter,
         };
 
-        struct sc_frame_source *src = &s->video_decoder.frame_source;
+        struct sc_frame_source* src = &s->video_decoder.frame_source;
         if (options->display_buffer) {
             sc_delay_buffer_init(&s->display_buffer, options->display_buffer,
                                  true);
@@ -721,7 +732,17 @@ scrcpy(struct scrcpy_options *options) {
         if (!sc_screen_init(&s->screen, &screen_params)) {
             goto end;
         }
+
         screen_initialized = true;
+
+        struct sc_sidebar_params sidebar_params = {
+            .width = options->window_width,
+            .height = options->window_height,
+            .window_x = options->window_x,
+            .window_y = options->window_y,
+        };
+        sc_sidebar_init(&s->sidebar, &s->screen, &sidebar_params);
+        s->screen.sidebar = &s->sidebar;
 
         sc_frame_source_add_sink(src, &s->screen.frame_sink);
     }
@@ -739,7 +760,7 @@ scrcpy(struct scrcpy_options *options) {
             goto end;
         }
 
-        struct sc_frame_source *src = &s->video_decoder.frame_source;
+        struct sc_frame_source* src = &s->video_decoder.frame_source;
         if (options->v4l2_buffer) {
             sc_delay_buffer_init(&s->v4l2_buffer, options->v4l2_buffer, true);
             sc_frame_source_add_sink(src, &s->v4l2_buffer.frame_sink);

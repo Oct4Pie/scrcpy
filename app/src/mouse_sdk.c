@@ -56,14 +56,14 @@ convert_touch_action(enum sc_touch_action action) {
 }
 
 static void
-sc_mouse_processor_process_mouse_motion(struct sc_mouse_processor *mp,
-                                    const struct sc_mouse_motion_event *event) {
+sc_mouse_processor_process_mouse_motion(struct sc_mouse_processor* mp,
+                                        const struct sc_mouse_motion_event* event) {
     if (!event->buttons_state) {
         // Do not send motion events when no click is pressed
         return;
     }
 
-    struct sc_mouse_sdk *m = DOWNCAST(mp);
+    struct sc_mouse_sdk* m = DOWNCAST(mp);
 
     struct sc_control_msg msg = {
         .type = SC_CONTROL_MSG_TYPE_INJECT_TOUCH_EVENT,
@@ -82,9 +82,9 @@ sc_mouse_processor_process_mouse_motion(struct sc_mouse_processor *mp,
 }
 
 static void
-sc_mouse_processor_process_mouse_click(struct sc_mouse_processor *mp,
-                                    const struct sc_mouse_click_event *event) {
-    struct sc_mouse_sdk *m = DOWNCAST(mp);
+sc_mouse_processor_process_mouse_click(struct sc_mouse_processor* mp,
+                                       const struct sc_mouse_click_event* event) {
+    struct sc_mouse_sdk* m = DOWNCAST(mp);
 
     struct sc_control_msg msg = {
         .type = SC_CONTROL_MSG_TYPE_INJECT_TOUCH_EVENT,
@@ -104,9 +104,9 @@ sc_mouse_processor_process_mouse_click(struct sc_mouse_processor *mp,
 }
 
 static void
-sc_mouse_processor_process_mouse_scroll(struct sc_mouse_processor *mp,
-                                   const struct sc_mouse_scroll_event *event) {
-    struct sc_mouse_sdk *m = DOWNCAST(mp);
+sc_mouse_processor_process_mouse_scroll(struct sc_mouse_processor* mp,
+                                        const struct sc_mouse_scroll_event* event) {
+    struct sc_mouse_sdk* m = DOWNCAST(mp);
 
     struct sc_control_msg msg = {
         .type = SC_CONTROL_MSG_TYPE_INJECT_SCROLL_EVENT,
@@ -124,9 +124,9 @@ sc_mouse_processor_process_mouse_scroll(struct sc_mouse_processor *mp,
 }
 
 static void
-sc_mouse_processor_process_touch(struct sc_mouse_processor *mp,
-                                 const struct sc_touch_event *event) {
-    struct sc_mouse_sdk *m = DOWNCAST(mp);
+sc_mouse_processor_process_touch(struct sc_mouse_processor* mp,
+                                 const struct sc_touch_event* event) {
+    struct sc_mouse_sdk* m = DOWNCAST(mp);
 
     struct sc_control_msg msg = {
         .type = SC_CONTROL_MSG_TYPE_INJECT_TOUCH_EVENT,
@@ -144,8 +144,7 @@ sc_mouse_processor_process_touch(struct sc_mouse_processor *mp,
     }
 }
 
-void
-sc_mouse_sdk_init(struct sc_mouse_sdk *m, struct sc_controller *controller) {
+void sc_mouse_sdk_init(struct sc_mouse_sdk* m, struct sc_controller* controller) {
     m->controller = controller;
 
     static const struct sc_mouse_processor_ops ops = {

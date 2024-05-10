@@ -1,13 +1,14 @@
 #include "common.h"
 
 #include <assert.h>
+#include <libavformat/avformat.h>
+#include <libgen.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <libavformat/avformat.h>
 #ifdef HAVE_V4L2
-# include <libavdevice/avdevice.h>
+#include <libavdevice/avdevice.h>
 #endif
-#define SDL_MAIN_HANDLED // avoid link error on Linux Windows Subsystem
+#define SDL_MAIN_HANDLED  // avoid link error on Linux Windows Subsystem
 #include <SDL2/SDL.h>
 
 #include "cli.h"
@@ -24,7 +25,7 @@
 #endif
 
 static int
-main_scrcpy(int argc, char *argv[]) {
+main_scrcpy(int argc, char* argv[]) {
 #ifdef _WIN32
     // disable buffering, we want logs immediately
     // even line buffering (setvbuf() with mode _IOLBF) is not sufficient
@@ -92,8 +93,8 @@ main_scrcpy(int argc, char *argv[]) {
 
 end:
     if (args.pause_on_exit == SC_PAUSE_ON_EXIT_TRUE ||
-            (args.pause_on_exit == SC_PAUSE_ON_EXIT_IF_ERROR &&
-                ret != SCRCPY_EXIT_SUCCESS)) {
+        (args.pause_on_exit == SC_PAUSE_ON_EXIT_IF_ERROR &&
+         ret != SCRCPY_EXIT_SUCCESS)) {
         printf("Press Enter to continue...\n");
         getchar();
     }
@@ -101,21 +102,41 @@ end:
     return ret;
 }
 
-int
-main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
+    char* progPath = strdup(argv[0]);
+    if (progPath == NULL) {
+        perror("Failed to duplicate argv[0]");
+        return 1;
+    }
+
+    // Use dirname to extract the directory containing the executable
+    char* dir = dirname(progPath);
+
+    // Set the PATH to this directory
+    if (setenv("PATH", dir, 1) != 0) {
+        perror("Failed to set PATH");
+        free(progPath);
+        return 1;
+    }
+
+    // Verify the change
+    printf("Updated PATH: %s\n", getenv("PATH"));
+
+    // Clean up
+    free(progPath);
 #ifndef _WIN32
     return main_scrcpy(argc, argv);
 #else
-    (void) argc;
-    (void) argv;
+    (void)argc;
+    (void)argv;
     int wargc;
-    wchar_t **wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
+    wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &wargc);
     if (!wargv) {
         LOG_OOM();
         return SCRCPY_EXIT_FAILURE;
     }
 
-    char **argv_utf8 = malloc((wargc + 1) * sizeof(*argv_utf8));
+    char** argv_utf8 = malloc((wargc + 1) * sizeof(*argv_utf8));
     if (!argv_utf8) {
         LOG_OOM();
         LocalFree(wargv);

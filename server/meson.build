@@ -10,7 +10,7 @@ if prebuilt_server == ''
                   command: [find_program('./scripts/build-wrapper.sh'), meson.current_source_dir(), '@OUTPUT@', get_option('buildtype')],
                   console: true,
                   install: true,
-                  install_dir: 'share/scrcpy')
+                  install_dir: 'scrcpy.app/Contents/Resources')
 else
     if not prebuilt_server.startswith('/')
         # prebuilt server path is relative to the root scrcpy directory
@@ -21,5 +21,5 @@ else
                   output: 'scrcpy-server',
                   command: ['cp', '@INPUT@', '@OUTPUT@'],
                   install: true,
-                  install_dir: 'share/scrcpy')
+                  install_dir: 'scrcpy.app/Contents/Resources')
 endif

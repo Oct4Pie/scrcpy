@@ -1,11 +1,11 @@
 #include "server.h"
 
+#include <SDL2/SDL_platform.h>
+#include <SDL2/SDL_timer.h>
 #include <assert.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <stdio.h>
-#include <SDL2/SDL_timer.h>
-#include <SDL2/SDL_platform.h>
 
 #include "adb/adb.h"
 #include "util/binary.h"
@@ -17,25 +17,25 @@
 
 #define SC_SERVER_FILENAME "scrcpy-server"
 
-#define SC_SERVER_PATH_DEFAULT PREFIX "/share/scrcpy/" SC_SERVER_FILENAME
+#define SC_SERVER_PATH_DEFAULT PREFIX "/scrcpy.app/contents/resources/" SC_SERVER_FILENAME
 #define SC_DEVICE_SERVER_PATH "/data/local/tmp/scrcpy-server.jar"
 
 #define SC_ADB_PORT_DEFAULT 5555
 #define SC_SOCKET_NAME_PREFIX "scrcpy_"
 
-static char *
+static char*
 get_server_path(void) {
 #ifdef __WINDOWS__
-    const wchar_t *server_path_env = _wgetenv(L"SCRCPY_SERVER_PATH");
+    const wchar_t* server_path_env = _wgetenv(L"SCRCPY_SERVER_PATH");
 #else
-    const char *server_path_env = getenv("SCRCPY_SERVER_PATH");
+    const char* server_path_env = getenv("SCRCPY_SERVER_PATH");
 #endif
     if (server_path_env) {
         // if the envvar is set, use it
 #ifdef __WINDOWS__
-        char *server_path = sc_str_from_wchars(server_path_env);
+        char* server_path = sc_str_from_wchars(server_path_env);
 #else
-        char *server_path = strdup(server_path_env);
+        char* server_path = strdup(server_path_env);
 #endif
         if (!server_path) {
             LOG_OOM();
@@ -47,16 +47,17 @@ get_server_path(void) {
 
 #ifndef PORTABLE
     LOGD("Using server: " SC_SERVER_PATH_DEFAULT);
-    char *server_path = strdup(SC_SERVER_PATH_DEFAULT);
+    char* server_path = strdup(SC_SERVER_PATH_DEFAULT);
     if (!server_path) {
         LOG_OOM();
         return NULL;
     }
 #else
-    char *server_path = sc_file_get_local_path(SC_SERVER_FILENAME);
+    char* server_path = sc_file_get_local_path(SC_SERVER_FILENAME);
     if (!server_path) {
-        LOGE("Could not get local file path, "
-             "using " SC_SERVER_FILENAME " from current directory");
+        LOGE(
+            "Could not get local file path, "
+            "using " SC_SERVER_FILENAME " from current directory");
         return strdup(SC_SERVER_FILENAME);
     }
 
@@ -67,36 +68,37 @@ get_server_path(void) {
 }
 
 static void
-sc_server_params_destroy(struct sc_server_params *params) {
+sc_server_params_destroy(struct sc_server_params* params) {
     // The server stores a copy of the params provided by the user
-    free((char *) params->req_serial);
-    free((char *) params->crop);
-    free((char *) params->video_codec_options);
-    free((char *) params->audio_codec_options);
-    free((char *) params->video_encoder);
-    free((char *) params->audio_encoder);
-    free((char *) params->tcpip_dst);
-    free((char *) params->camera_id);
-    free((char *) params->camera_ar);
+    free((char*)params->req_serial);
+    free((char*)params->crop);
+    free((char*)params->video_codec_options);
+    free((char*)params->audio_codec_options);
+    free((char*)params->video_encoder);
+    free((char*)params->audio_encoder);
+    free((char*)params->tcpip_dst);
+    free((char*)params->camera_id);
+    free((char*)params->camera_ar);
 }
 
 static bool
-sc_server_params_copy(struct sc_server_params *dst,
-                      const struct sc_server_params *src) {
+sc_server_params_copy(struct sc_server_params* dst,
+                      const struct sc_server_params* src) {
     *dst = *src;
 
     // The params reference user-allocated memory, so we must copy them to
     // handle them from another thread
 
-#define COPY(FIELD) do { \
-    dst->FIELD = NULL; \
-    if (src->FIELD) { \
-        dst->FIELD = strdup(src->FIELD); \
-        if (!dst->FIELD) { \
-            goto error; \
-        } \
-    } \
-} while(0)
+#define COPY(FIELD)                          \
+    do {                                     \
+        dst->FIELD = NULL;                   \
+        if (src->FIELD) {                    \
+            dst->FIELD = strdup(src->FIELD); \
+            if (!dst->FIELD) {               \
+                goto error;                  \
+            }                                \
+        }                                    \
+    } while (0)
 
     COPY(req_serial);
     COPY(crop);
@@ -117,8 +119,8 @@ error:
 }
 
 static bool
-push_server(struct sc_intr *intr, const char *serial) {
-    char *server_path = get_server_path();
+push_server(struct sc_intr* intr, const char* serial) {
+    char* server_path = get_server_path();
     if (!server_path) {
         return false;
     }
@@ -132,7 +134,7 @@ push_server(struct sc_intr *intr, const char *serial) {
     return ok;
 }
 
-static const char *
+static const char*
 log_level_to_server_string(enum sc_log_level level) {
     switch (level) {
         case SC_LOG_LEVEL_VERBOSE:
@@ -152,7 +154,7 @@ log_level_to_server_string(enum sc_log_level level) {
 }
 
 static bool
-sc_server_sleep(struct sc_server *server, sc_tick deadline) {
+sc_server_sleep(struct sc_server* server, sc_tick deadline) {
     sc_mutex_lock(&server->mutex);
     bool timed_out = false;
     while (!server->stopped && !timed_out) {
@@ -165,7 +167,7 @@ sc_server_sleep(struct sc_server *server, sc_tick deadline) {
     return !stopped;
 }
 
-static const char *
+static const char*
 sc_server_get_codec_name(enum sc_codec codec) {
     switch (codec) {
         case SC_CODEC_H264:
@@ -187,7 +189,7 @@ sc_server_get_codec_name(enum sc_codec codec) {
     }
 }
 
-static const char *
+static const char*
 sc_server_get_camera_facing_name(enum sc_camera_facing camera_facing) {
     switch (camera_facing) {
         case SC_CAMERA_FACING_FRONT:
@@ -202,14 +204,14 @@ sc_server_get_camera_facing_name(enum sc_camera_facing camera_facing) {
 }
 
 static sc_pid
-execute_server(struct sc_server *server,
-               const struct sc_server_params *params) {
+execute_server(struct sc_server* server,
+               const struct sc_server_params* params) {
     sc_pid pid = SC_PROCESS_NONE;
 
-    const char *serial = server->serial;
+    const char* serial = server->serial;
     assert(serial);
 
-    const char *cmd[128];
+    const char* cmd[128];
     unsigned count = 0;
     cmd[count++] = sc_adb_get_executable();
     cmd[count++] = "-s";
@@ -219,30 +221,31 @@ execute_server(struct sc_server *server,
     cmd[count++] = "app_process";
 
 #ifdef SERVER_DEBUGGER
-# define SERVER_DEBUGGER_PORT "5005"
+#define SERVER_DEBUGGER_PORT "5005"
     cmd[count++] =
-# ifdef SERVER_DEBUGGER_METHOD_NEW
+#ifdef SERVER_DEBUGGER_METHOD_NEW
         /* Android 9 and above */
         "-XjdwpProvider:internal -XjdwpOptions:transport=dt_socket,suspend=y,"
         "server=y,address="
-# else
+#else
         /* Android 8 and below */
         "-agentlib:jdwp=transport=dt_socket,suspend=y,server=y,address="
-# endif
-            SERVER_DEBUGGER_PORT;
 #endif
-    cmd[count++] = "/"; // unused
+        SERVER_DEBUGGER_PORT;
+#endif
+    cmd[count++] = "/";  // unused
     cmd[count++] = "com.genymobile.scrcpy.Server";
     cmd[count++] = SCRCPY_VERSION;
 
-    unsigned dyn_idx = count; // from there, the strings are allocated
-#define ADD_PARAM(fmt, ...) do { \
-        char *p; \
-        if (asprintf(&p, fmt, ## __VA_ARGS__) == -1) { \
-            goto end; \
-        } \
-        cmd[count++] = p; \
-    } while(0)
+    unsigned dyn_idx = count;  // from there, the strings are allocated
+#define ADD_PARAM(fmt, ...)                           \
+    do {                                              \
+        char* p;                                      \
+        if (asprintf(&p, fmt, ##__VA_ARGS__) == -1) { \
+            goto end;                                 \
+        }                                             \
+        cmd[count++] = p;                             \
+    } while (0)
 
     ADD_PARAM("scid=%08x", params->scid);
     ADD_PARAM("log_level=%s", log_level_to_server_string(params->log_level));
@@ -265,7 +268,7 @@ execute_server(struct sc_server *server,
     }
     if (params->audio_codec != SC_CODEC_OPUS) {
         ADD_PARAM("audio_codec=%s",
-            sc_server_get_codec_name(params->audio_codec));
+                  sc_server_get_codec_name(params->audio_codec));
     }
     if (params->video_source != SC_VIDEO_SOURCE_DISPLAY) {
         assert(params->video_source == SC_VIDEO_SOURCE_CAMERA);
@@ -305,7 +308,7 @@ execute_server(struct sc_server *server,
     }
     if (params->camera_facing != SC_CAMERA_FACING_ANY) {
         ADD_PARAM("camera_facing=%s",
-            sc_server_get_camera_facing_name(params->camera_facing));
+                  sc_server_get_camera_facing_name(params->camera_facing));
     }
     if (params->camera_ar) {
         ADD_PARAM("camera_ar=%s", params->camera_ar);
@@ -371,8 +374,7 @@ execute_server(struct sc_server *server,
     cmd[count++] = NULL;
 
 #ifdef SERVER_DEBUGGER
-    LOGI("Server debugger waiting for a client on device port "
-         SERVER_DEBUGGER_PORT "...");
+    LOGI("Server debugger waiting for a client on device port " SERVER_DEBUGGER_PORT "...");
     // From the computer, run
     //     adb forward tcp:5005 tcp:5005
     // Then, from Android Studio: Run > Debug > Edit configurations...
@@ -386,15 +388,14 @@ execute_server(struct sc_server *server,
 
 end:
     for (unsigned i = dyn_idx; i < count; ++i) {
-        free((char *) cmd[i]);
+        free((char*)cmd[i]);
     }
 
     return pid;
 }
 
 static bool
-connect_and_read_byte(struct sc_intr *intr, sc_socket socket,
-                      uint32_t tunnel_host, uint16_t tunnel_port) {
+connect_and_read_byte(struct sc_intr* intr, sc_socket socket, uint32_t tunnel_host, uint16_t tunnel_port) {
     bool ok = net_connect_intr(intr, socket, tunnel_host, tunnel_port);
     if (!ok) {
         return false;
@@ -412,8 +413,7 @@ connect_and_read_byte(struct sc_intr *intr, sc_socket socket,
 }
 
 static sc_socket
-connect_to_server(struct sc_server *server, unsigned attempts, sc_tick delay,
-                  uint32_t host, uint16_t port) {
+connect_to_server(struct sc_server* server, unsigned attempts, sc_tick delay, uint32_t host, uint16_t port) {
     do {
         LOGD("Remaining connection attempts: %u", attempts);
         sc_socket socket = net_socket();
@@ -444,9 +444,7 @@ connect_to_server(struct sc_server *server, unsigned attempts, sc_tick delay,
     return SC_SOCKET_NONE;
 }
 
-bool
-sc_server_init(struct sc_server *server, const struct sc_server_params *params,
-              const struct sc_server_callbacks *cbs, void *cbs_userdata) {
+bool sc_server_init(struct sc_server* server, const struct sc_server_params* params, const struct sc_server_callbacks* cbs, void* cbs_userdata) {
     bool ok = sc_server_params_copy(&server->params, params);
     if (!ok) {
         LOG_OOM();
@@ -496,8 +494,7 @@ sc_server_init(struct sc_server *server, const struct sc_server_params *params,
 }
 
 static bool
-device_read_info(struct sc_intr *intr, sc_socket device_socket,
-                 struct sc_server_info *info) {
+device_read_info(struct sc_intr* intr, sc_socket device_socket, struct sc_server_info* info) {
     uint8_t buf[SC_DEVICE_NAME_FIELD_LENGTH];
     ssize_t r = net_recv_all_intr(intr, device_socket, buf, sizeof(buf));
     if (r < SC_DEVICE_NAME_FIELD_LENGTH) {
@@ -506,18 +503,18 @@ device_read_info(struct sc_intr *intr, sc_socket device_socket,
     }
     // in case the client sends garbage
     buf[SC_DEVICE_NAME_FIELD_LENGTH - 1] = '\0';
-    memcpy(info->device_name, (char *) buf, sizeof(info->device_name));
+    memcpy(info->device_name, (char*)buf, sizeof(info->device_name));
 
     return true;
 }
 
 static bool
-sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
-    struct sc_adb_tunnel *tunnel = &server->tunnel;
+sc_server_connect_to(struct sc_server* server, struct sc_server_info* info) {
+    struct sc_adb_tunnel* tunnel = &server->tunnel;
 
     assert(tunnel->enabled);
 
-    const char *serial = server->serial;
+    const char* serial = server->serial;
     assert(serial);
 
     bool video = server->params.video;
@@ -611,9 +608,9 @@ sc_server_connect_to(struct sc_server *server, struct sc_server_info *info) {
     sc_adb_tunnel_close(tunnel, &server->intr, serial,
                         server->device_socket_name);
 
-    sc_socket first_socket = video ? video_socket
-                           : audio ? audio_socket
-                                   : control_socket;
+    sc_socket first_socket = video   ? video_socket
+                             : audio ? audio_socket
+                                     : control_socket;
 
     // The sockets will be closed on stop if device_read_info() fails
     bool ok = device_read_info(&server->intr, first_socket, info);
@@ -660,8 +657,8 @@ fail:
 }
 
 static void
-sc_server_on_terminated(void *userdata) {
-    struct sc_server *server = userdata;
+sc_server_on_terminated(void* userdata) {
+    struct sc_server* server = userdata;
 
     // If the server process dies before connecting to the server socket,
     // then the client will be stuck forever on accept(). To avoid the problem,
@@ -675,10 +672,10 @@ sc_server_on_terminated(void *userdata) {
 }
 
 static uint16_t
-get_adb_tcp_port(struct sc_server *server, const char *serial) {
-    struct sc_intr *intr = &server->intr;
+get_adb_tcp_port(struct sc_server* server, const char* serial) {
+    struct sc_intr* intr = &server->intr;
 
-    char *current_port =
+    char* current_port =
         sc_adb_getprop(intr, serial, "service.adb.tcp.port", SC_ADB_SILENT);
     if (!current_port) {
         return 0;
@@ -699,9 +696,7 @@ get_adb_tcp_port(struct sc_server *server, const char *serial) {
 }
 
 static bool
-wait_tcpip_mode_enabled(struct sc_server *server, const char *serial,
-                        uint16_t expected_port, unsigned attempts,
-                        sc_tick delay) {
+wait_tcpip_mode_enabled(struct sc_server* server, const char* serial, uint16_t expected_port, unsigned attempts, sc_tick delay) {
     uint16_t adb_port = get_adb_tcp_port(server, serial);
     if (adb_port == expected_port) {
         return true;
@@ -725,9 +720,9 @@ wait_tcpip_mode_enabled(struct sc_server *server, const char *serial,
     return false;
 }
 
-static char *
-append_port(const char *ip, uint16_t port) {
-    char *ip_port;
+static char*
+append_port(const char* ip, uint16_t port) {
+    char* ip_port;
     int ret = asprintf(&ip_port, "%s:%" PRIu16, ip, port);
     if (ret == -1) {
         LOG_OOM();
@@ -737,15 +732,15 @@ append_port(const char *ip, uint16_t port) {
     return ip_port;
 }
 
-static char *
-sc_server_switch_to_tcpip(struct sc_server *server, const char *serial) {
+static char*
+sc_server_switch_to_tcpip(struct sc_server* server, const char* serial) {
     assert(serial);
 
-    struct sc_intr *intr = &server->intr;
+    struct sc_intr* intr = &server->intr;
 
     LOGI("Switching device %s to TCP/IP...", serial);
 
-    char *ip = sc_adb_get_device_ip(intr, serial, 0);
+    char* ip = sc_adb_get_device_ip(intr, serial, 0);
     if (!ip) {
         LOGE("Device IP not found");
         return NULL;
@@ -778,14 +773,14 @@ sc_server_switch_to_tcpip(struct sc_server *server, const char *serial) {
         LOGI("TCP/IP mode enabled on port " SC_STR(SC_ADB_PORT_DEFAULT));
     }
 
-    char *ip_port = append_port(ip, adb_port);
+    char* ip_port = append_port(ip, adb_port);
     free(ip);
     return ip_port;
 }
 
 static bool
-sc_server_connect_to_tcpip(struct sc_server *server, const char *ip_port) {
-    struct sc_intr *intr = &server->intr;
+sc_server_connect_to_tcpip(struct sc_server* server, const char* ip_port) {
+    struct sc_intr* intr = &server->intr;
 
     // Error expected if not connected, do not report any error
     sc_adb_disconnect(intr, ip_port, SC_ADB_SILENT);
@@ -803,11 +798,11 @@ sc_server_connect_to_tcpip(struct sc_server *server, const char *ip_port) {
 }
 
 static bool
-sc_server_configure_tcpip_known_address(struct sc_server *server,
-                                        const char *addr) {
+sc_server_configure_tcpip_known_address(struct sc_server* server,
+                                        const char* addr) {
     // Append ":5555" if no port is present
     bool contains_port = strchr(addr, ':');
-    char *ip_port = contains_port ? strdup(addr)
+    char* ip_port = contains_port ? strdup(addr)
                                   : append_port(addr, SC_ADB_PORT_DEFAULT);
     if (!ip_port) {
         LOG_OOM();
@@ -819,8 +814,8 @@ sc_server_configure_tcpip_known_address(struct sc_server *server,
 }
 
 static bool
-sc_server_configure_tcpip_unknown_address(struct sc_server *server,
-                                          const char *serial) {
+sc_server_configure_tcpip_unknown_address(struct sc_server* server,
+                                          const char* serial) {
     bool is_already_tcpip =
         sc_adb_device_get_type(serial) == SC_ADB_DEVICE_TYPE_TCPIP;
     if (is_already_tcpip) {
@@ -834,7 +829,7 @@ sc_server_configure_tcpip_unknown_address(struct sc_server *server,
         return true;
     }
 
-    char *ip_port = sc_server_switch_to_tcpip(server, serial);
+    char* ip_port = sc_server_switch_to_tcpip(server, serial);
     if (!ip_port) {
         return false;
     }
@@ -844,7 +839,7 @@ sc_server_configure_tcpip_unknown_address(struct sc_server *server,
 }
 
 static void
-sc_server_kill_adb_if_requested(struct sc_server *server) {
+sc_server_kill_adb_if_requested(struct sc_server* server) {
     if (server->params.kill_adb_on_close) {
         LOGI("Killing adb server...");
         unsigned flags = SC_ADB_NO_STDOUT | SC_ADB_NO_STDERR | SC_ADB_NO_LOGERR;
@@ -853,10 +848,10 @@ sc_server_kill_adb_if_requested(struct sc_server *server) {
 }
 
 static int
-run_server(void *data) {
-    struct sc_server *server = data;
+run_server(void* data) {
+    struct sc_server* server = data;
 
-    const struct sc_server_params *params = &server->params;
+    const struct sc_server_params* params = &server->params;
 
     // Execute "adb start-server" before "adb devices" so that daemon starting
     // output/errors is correctly printed in the console ("adb devices" output
@@ -881,9 +876,7 @@ run_server(void *data) {
 
     if (need_initial_serial) {
         // At most one of the 3 following parameters may be set
-        assert(!!params->req_serial
-               + params->select_usb
-               + params->select_tcpip <= 1);
+        assert(!!params->req_serial + params->select_usb + params->select_tcpip <= 1);
 
         struct sc_adb_device_selector selector;
         if (params->req_serial) {
@@ -895,7 +888,7 @@ run_server(void *data) {
             selector.type = SC_ADB_DEVICE_SELECT_TCPIP;
         } else {
             // No explicit selection, check $ANDROID_SERIAL
-            const char *env_serial = getenv("ANDROID_SERIAL");
+            const char* env_serial = getenv("ANDROID_SERIAL");
             if (env_serial) {
                 LOGI("Using ANDROID_SERIAL: %s", env_serial);
                 selector.type = SC_ADB_DEVICE_SELECT_SERIAL;
@@ -933,7 +926,7 @@ run_server(void *data) {
         }
     }
 
-    const char *serial = server->serial;
+    const char* serial = server->serial;
     assert(serial);
     LOGD("Device serial: %s", serial);
 
@@ -949,7 +942,7 @@ run_server(void *data) {
         if (pid == SC_PROCESS_NONE) {
             goto error_connection_failed;
         }
-        sc_process_wait(pid, NULL); // ignore exit code
+        sc_process_wait(pid, NULL);  // ignore exit code
         sc_process_close(pid);
         // Wake up await_for_server()
         server->cbs->on_connected(server, server->cbs_userdata);
@@ -987,7 +980,7 @@ run_server(void *data) {
     ok = sc_process_observer_init(&observer, pid, &listener, server);
     if (!ok) {
         sc_process_terminate(pid);
-        sc_process_wait(pid, true); // ignore exit code
+        sc_process_wait(pid, true);  // ignore exit code
         sc_adb_tunnel_close(&server->tunnel, &server->intr, serial,
                             server->device_socket_name);
         goto error_connection_failed;
@@ -997,7 +990,7 @@ run_server(void *data) {
     // The tunnel is always closed by server_connect_to()
     if (!ok) {
         sc_process_terminate(pid);
-        sc_process_wait(pid, true); // ignore exit code
+        sc_process_wait(pid, true);  // ignore exit code
         sc_process_observer_join(&observer);
         sc_process_observer_destroy(&observer);
         goto error_connection_failed;
@@ -1061,8 +1054,7 @@ error_connection_failed:
     return -1;
 }
 
-bool
-sc_server_start(struct sc_server *server) {
+bool sc_server_start(struct sc_server* server) {
     bool ok =
         sc_thread_create(&server->thread, run_server, "scrcpy-server", server);
     if (!ok) {
@@ -1073,8 +1065,7 @@ sc_server_start(struct sc_server *server) {
     return true;
 }
 
-void
-sc_server_stop(struct sc_server *server) {
+void sc_server_stop(struct sc_server* server) {
     sc_mutex_lock(&server->mutex);
     server->stopped = true;
     sc_cond_signal(&server->cond_stopped);
@@ -1082,13 +1073,11 @@ sc_server_stop(struct sc_server *server) {
     sc_mutex_unlock(&server->mutex);
 }
 
-void
-sc_server_join(struct sc_server *server) {
+void sc_server_join(struct sc_server* server) {
     sc_thread_join(&server->thread, NULL);
 }
 
-void
-sc_server_destroy(struct sc_server *server) {
+void sc_server_destroy(struct sc_server* server) {
     if (server->video_socket != SC_SOCKET_NONE) {
         net_close(server->video_socket);
     }

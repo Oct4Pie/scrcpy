@@ -16,6 +16,7 @@ src = [
     'src/device_msg.c',
     'src/display.c',
     'src/icon.c',
+    'src/keymap.c',
     'src/file_pusher.c',
     'src/fps_counter.c',
     'src/frame_buffer.c',
@@ -30,7 +31,9 @@ src = [
     'src/scrcpy.c',
     'src/screen.c',
     'src/server.c',
+    'src/sidebar.c',
     'src/version.c',
+    'src/tinyfiledialogs.c',
     'src/hid/hid_keyboard.c',
     'src/hid/hid_mouse.c',
     'src/trait/frame_source.c',
@@ -60,6 +63,9 @@ src = [
 ]
 
 conf = configuration_data()
+app_name = 'scrcpy'
+bundle_name = app_name + '.app'
+executable_name = app_name
 
 conf.set('_POSIX_C_SOURCE', '200809L')
 conf.set('_XOPEN_SOURCE', '700')
@@ -81,7 +87,7 @@ else
     ]
     if host_machine.system() == 'darwin'
         conf.set('_DARWIN_C_SOURCE', true)
-    endif
+        endif
 endif
 
 v4l2_support = get_option('v4l2') and host_machine.system() == 'linux'
@@ -108,9 +114,11 @@ dependencies = [
     dependency('libavcodec', version: '>= 57.37'),
     dependency('libavutil'),
     dependency('libswresample'),
-    dependency('sdl2', version: '>= 2.0.5'),
+    dependency('sdl2', version: '>= 2.0.10'),
+    dependency('SDL2_ttf', version: '>= 2.0.5'),
+    dependency('sdl2_image', version: '>= 2.8.2'),
+    
 ]
-
 if v4l2_support
     dependencies += dependency('libavdevice')
 endif
@@ -171,10 +179,12 @@ conf.set('HAVE_V4L2', v4l2_support)
 conf.set('HAVE_USB', usb_support)
 
 configure_file(configuration: conf, output: 'config.h')
-
+app_icon = 'scrcpy.icns'
 src_dir = include_directories('src')
 
-executable('scrcpy', src,
+dependencies +=dependency('cjson', version: '>= 1.7.17')
+
+executable(executable_name, src,
            dependencies: dependencies,
            include_directories: src_dir,
            install: true,
@@ -183,14 +193,11 @@ executable('scrcpy', src,
 # <https://mesonbuild.com/Builtin-options.html#directories>
 datadir = get_option('datadir') # by default 'share'
 
-install_man('scrcpy.1')
-install_data('data/icon.png',
-             rename: 'scrcpy.png',
-             install_dir: join_paths(datadir, 'icons/hicolor/256x256/apps'))
-install_data('data/zsh-completion/_scrcpy',
-             install_dir: join_paths(datadir, 'zsh/site-functions'))
-install_data('data/bash-completion/scrcpy',
-             install_dir: join_paths(datadir, 'bash-completion/completions'))
+png_files = run_command('find', 'data', '-name', '*.png').stdout().strip().split('\n')
+
+foreach png : png_files
+    install_data(png, install_dir : get_option('datadir') + '/icons')
+endforeach
 
 # Desktop entry file for application launchers
 if host_machine.system() == 'linux'
@@ -202,74 +209,37 @@ if host_machine.system() == 'linux'
 endif
 
 
-### TESTS
+if host_machine.system() == 'darwin'
+        # Define paths for the bundle
+        bundle_root = join_paths(get_option('prefix'), app_name + '.app')
+        contents_dir = join_paths(bundle_root, 'Contents')
+        macos_dir = join_paths(contents_dir, 'MacOS')
+        resources_dir = join_paths(contents_dir, 'Resources')
 
-# do not build tests in release (assertions would not be executed at all)
-if get_option('buildtype') == 'debug'
-    tests = [
-        ['test_adb_parser', [
-            'tests/test_adb_parser.c',
-            'src/adb/adb_device.c',
-            'src/adb/adb_parser.c',
-            'src/util/str.c',
-            'src/util/strbuf.c',
-        ]],
-        ['test_binary', [
-            'tests/test_binary.c',
-        ]],
-        ['test_audiobuf', [
-            'tests/test_audiobuf.c',
-            'src/util/audiobuf.c',
-            'src/util/memory.c',
-        ]],
-        ['test_cli', [
-            'tests/test_cli.c',
-            'src/cli.c',
-            'src/options.c',
-            'src/util/log.c',
-            'src/util/net.c',
-            'src/util/str.c',
-            'src/util/strbuf.c',
-            'src/util/term.c',
-        ]],
-        ['test_control_msg_serialize', [
-            'tests/test_control_msg_serialize.c',
-            'src/control_msg.c',
-            'src/util/str.c',
-            'src/util/strbuf.c',
-        ]],
-        ['test_device_msg_deserialize', [
-            'tests/test_device_msg_deserialize.c',
-            'src/device_msg.c',
-        ]],
-        ['test_orientation', [
-            'tests/test_orientation.c',
-            'src/options.c',
-        ]],
-        ['test_strbuf', [
-            'tests/test_strbuf.c',
-            'src/util/strbuf.c',
-        ]],
-        ['test_str', [
-            'tests/test_str.c',
-            'src/util/str.c',
-            'src/util/strbuf.c',
-        ]],
-        ['test_vecdeque', [
-            'tests/test_vecdeque.c',
-            'src/util/memory.c',
-        ]],
-        ['test_vector', [
-            'tests/test_vector.c',
-        ]],
-    ]
+        # Info.plist configuration
+        config_data = configuration_data()
+        config_data.set('EXECUTABLE_NAME', app_name)
+        config_data.set('CFBundleExecutable', app_name)
+        config_data.set('CFBundleIdentifier', 'com.thiscompany8ggfsffdxs.' + app_name)
+        config_data.set('CFBundleName', app_name)
+        config_data.set('CFBundleVersion', meson.project_version())
+        config_data.set('CFBundleShortVersionString', meson.project_version())
+        config_data.set('CFBundleIconFile', app_icon)
+        plist_file = configure_file(input : 'Info.plist.in',
+                                    output : 'Info.plist',
+                                    configuration : config_data)
 
-    foreach t : tests
-        sources = t[1] + ['src/compat.c']
-        exe = executable(t[0], sources,
-                         include_directories: src_dir,
-                         dependencies: dependencies,
-                         c_args: ['-DSDL_MAIN_HANDLED', '-DSC_TEST'])
-        test(t[0], exe)
-    endforeach
-endif
+        # Prepare app directories and plist
+        meson.add_install_script('post_bundle.sh',
+                                contents_dir,
+                                macos_dir,
+                                resources_dir,
+                                plist_file,
+                                get_option('prefix')
+                                )
+
+        meson.add_install_script('fix_libs.py',
+                                contents_dir,
+                                macos_dir,
+                                )
+        endif

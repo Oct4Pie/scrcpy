@@ -4,26 +4,24 @@
 
 #include "util/log.h"
 
-bool
-sc_display_init(struct sc_display *display, SDL_Window *window, bool mipmaps) {
+bool sc_display_init(struct sc_display* display, struct sc_keymap_screen* keymap_screen, SDL_Window* window, bool mipmaps) {
     display->renderer =
-        SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_TARGETTEXTURE);
     if (!display->renderer) {
         LOGE("Could not create renderer: %s", SDL_GetError());
         return false;
     }
-
+    display->keymap_screen = keymap_screen;
     SDL_RendererInfo renderer_info;
     int r = SDL_GetRendererInfo(display->renderer, &renderer_info);
-    const char *renderer_name = r ? NULL : renderer_info.name;
-    LOGI("Renderer: %s", renderer_name ? renderer_name : "(unknown)");
+    const char* renderer_name = r ? NULL : renderer_info.name;
+    printf("Renderer: %s", renderer_name ? renderer_name : "(unknown)");
 
     display->mipmaps = false;
 
     // starts with "opengl"
     bool use_opengl = renderer_name && !strncmp(renderer_name, "opengl", 6);
     if (use_opengl) {
-
 #ifdef SC_DISPLAY_FORCE_OPENGL_CORE_PROFILE
         // Persuade macOS to give us something better than OpenGL 2.1.
         // If we create a Core Profile context, we get the best OpenGL version.
@@ -39,7 +37,7 @@ sc_display_init(struct sc_display *display, SDL_Window *window, bool mipmaps) {
         }
 #endif
 
-        struct sc_opengl *gl = &display->gl;
+        struct sc_opengl* gl = &display->gl;
         sc_opengl_init(gl);
 
         LOGI("OpenGL version: %s", gl->version);
@@ -47,13 +45,14 @@ sc_display_init(struct sc_display *display, SDL_Window *window, bool mipmaps) {
         if (mipmaps) {
             bool supports_mipmaps =
                 sc_opengl_version_at_least(gl, 3, 0, /* OpenGL 3.0+ */
-                                               2, 0  /* OpenGL ES 2.0+ */);
+                                           2, 0 /* OpenGL ES 2.0+ */);
             if (supports_mipmaps) {
                 LOGI("Trilinear filtering enabled");
                 display->mipmaps = true;
             } else {
-                LOGW("Trilinear filtering disabled "
-                     "(OpenGL 3.0+ or ES 2.0+ required)");
+                LOGW(
+                    "Trilinear filtering disabled "
+                    "(OpenGL 3.0+ or ES 2.0+ required)");
             }
         } else {
             LOGI("Trilinear filtering disabled");
@@ -65,12 +64,11 @@ sc_display_init(struct sc_display *display, SDL_Window *window, bool mipmaps) {
     display->texture = NULL;
     display->pending.flags = 0;
     display->pending.frame = NULL;
-
+    sc_keymap_screen_init(display->keymap_screen, window, display->renderer);
     return true;
 }
 
-void
-sc_display_destroy(struct sc_display *display) {
+void sc_display_destroy(struct sc_display* display) {
     if (display->pending.frame) {
         av_frame_free(&display->pending.frame);
     }
@@ -83,11 +81,11 @@ sc_display_destroy(struct sc_display *display) {
     SDL_DestroyRenderer(display->renderer);
 }
 
-static SDL_Texture *
-sc_display_create_texture(struct sc_display *display,
+static SDL_Texture*
+sc_display_create_texture(struct sc_display* display,
                           struct sc_size size) {
-    SDL_Renderer *renderer = display->renderer;
-    SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12,
+    SDL_Renderer* renderer = display->renderer;
+    SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_YV12,
                                              SDL_TEXTUREACCESS_STREAMING,
                                              size.width, size.height);
     if (!texture) {
@@ -96,7 +94,7 @@ sc_display_create_texture(struct sc_display *display,
     }
 
     if (display->mipmaps) {
-        struct sc_opengl *gl = &display->gl;
+        struct sc_opengl* gl = &display->gl;
 
         SDL_GL_BindTexture(texture, NULL, NULL);
 
@@ -112,14 +110,14 @@ sc_display_create_texture(struct sc_display *display,
 }
 
 static inline void
-sc_display_set_pending_size(struct sc_display *display, struct sc_size size) {
+sc_display_set_pending_size(struct sc_display* display, struct sc_size size) {
     assert(!display->texture);
     display->pending.size = size;
     display->pending.flags |= SC_DISPLAY_PENDING_FLAG_SIZE;
 }
 
 static bool
-sc_display_set_pending_frame(struct sc_display *display, const AVFrame *frame) {
+sc_display_set_pending_frame(struct sc_display* display, const AVFrame* frame) {
     if (!display->pending.frame) {
         display->pending.frame = av_frame_alloc();
         if (!display->pending.frame) {
@@ -140,7 +138,7 @@ sc_display_set_pending_frame(struct sc_display *display, const AVFrame *frame) {
 }
 
 static bool
-sc_display_apply_pending(struct sc_display *display) {
+sc_display_apply_pending(struct sc_display* display) {
     if (display->pending.flags & SC_DISPLAY_PENDING_FLAG_SIZE) {
         assert(!display->texture);
         display->texture =
@@ -167,7 +165,7 @@ sc_display_apply_pending(struct sc_display *display) {
 }
 
 static bool
-sc_display_set_texture_size_internal(struct sc_display *display,
+sc_display_set_texture_size_internal(struct sc_display* display,
                                      struct sc_size size) {
     assert(size.width && size.height);
 
@@ -185,20 +183,19 @@ sc_display_set_texture_size_internal(struct sc_display *display,
 }
 
 enum sc_display_result
-sc_display_set_texture_size(struct sc_display *display, struct sc_size size) {
+sc_display_set_texture_size(struct sc_display* display, struct sc_size size) {
     bool ok = sc_display_set_texture_size_internal(display, size);
     if (!ok) {
         sc_display_set_pending_size(display, size);
         return SC_DISPLAY_RESULT_PENDING;
-
     }
 
     return SC_DISPLAY_RESULT_OK;
 }
 
 static bool
-sc_display_update_texture_internal(struct sc_display *display,
-                                   const AVFrame *frame) {
+sc_display_update_texture_internal(struct sc_display* display,
+                                   const AVFrame* frame) {
     int ret = SDL_UpdateYUVTexture(display->texture, NULL,
                                    frame->data[0], frame->linesize[0],
                                    frame->data[1], frame->linesize[1],
@@ -218,7 +215,7 @@ sc_display_update_texture_internal(struct sc_display *display,
 }
 
 enum sc_display_result
-sc_display_update_texture(struct sc_display *display, const AVFrame *frame) {
+sc_display_update_texture(struct sc_display* display, const AVFrame* frame) {
     bool ok = sc_display_update_texture_internal(display, frame);
     if (!ok) {
         ok = sc_display_set_pending_frame(display, frame);
@@ -234,8 +231,7 @@ sc_display_update_texture(struct sc_display *display, const AVFrame *frame) {
 }
 
 enum sc_display_result
-sc_display_render(struct sc_display *display, const SDL_Rect *geometry,
-                  enum sc_orientation orientation) {
+sc_display_render(struct sc_display* display, const SDL_Rect* geometry, enum sc_orientation orientation) {
     SDL_RenderClear(display->renderer);
 
     if (display->pending.flags) {
@@ -245,8 +241,8 @@ sc_display_render(struct sc_display *display, const SDL_Rect *geometry,
         }
     }
 
-    SDL_Renderer *renderer = display->renderer;
-    SDL_Texture *texture = display->texture;
+    SDL_Renderer* renderer = display->renderer;
+    SDL_Texture* texture = display->texture;
 
     if (orientation == SC_ORIENTATION_0) {
         int ret = SDL_RenderCopy(renderer, texture, NULL, geometry);
@@ -258,7 +254,7 @@ sc_display_render(struct sc_display *display, const SDL_Rect *geometry,
         unsigned cw_rotation = sc_orientation_get_rotation(orientation);
         double angle = 90 * cw_rotation;
 
-        const SDL_Rect *dstrect = NULL;
+        const SDL_Rect* dstrect = NULL;
         SDL_Rect rect;
         if (sc_orientation_is_swap(orientation)) {
             rect.x = geometry->x + (geometry->w - geometry->h) / 2;
@@ -271,7 +267,8 @@ sc_display_render(struct sc_display *display, const SDL_Rect *geometry,
         }
 
         SDL_RendererFlip flip = sc_orientation_is_mirror(orientation)
-                              ? SDL_FLIP_HORIZONTAL : 0;
+                                    ? SDL_FLIP_HORIZONTAL
+                                    : 0;
 
         int ret = SDL_RenderCopyEx(renderer, texture, NULL, dstrect, angle,
                                    NULL, flip);
@@ -280,7 +277,7 @@ sc_display_render(struct sc_display *display, const SDL_Rect *geometry,
             return SC_DISPLAY_RESULT_ERROR;
         }
     }
-
+    sc_keymap_screen_render(display->keymap_screen);
     SDL_RenderPresent(display->renderer);
     return SC_DISPLAY_RESULT_OK;
 }

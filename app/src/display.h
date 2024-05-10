@@ -10,6 +10,7 @@
 #include "coords.h"
 #include "opengl.h"
 #include "options.h"
+#include "keymap.h"
 
 #ifdef __APPLE__
 # define SC_DISPLAY_FORCE_OPENGL_CORE_PROFILE
@@ -26,6 +27,7 @@ struct sc_display {
 
     bool mipmaps;
 
+    struct sc_keymap_screen *keymap_screen; 
     struct {
 #define SC_DISPLAY_PENDING_FLAG_SIZE 1
 #define SC_DISPLAY_PENDING_FLAG_FRAME 2
@@ -42,7 +44,7 @@ enum sc_display_result {
 };
 
 bool
-sc_display_init(struct sc_display *display, SDL_Window *window, bool mipmaps);
+sc_display_init(struct sc_display *display,struct sc_keymap_screen *keymap_screen, SDL_Window *window, bool mipmaps);
 
 void
 sc_display_destroy(struct sc_display *display);

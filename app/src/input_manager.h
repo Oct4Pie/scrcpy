@@ -15,12 +15,12 @@
 #include "trait/mouse_processor.h"
 
 struct sc_input_manager {
-    struct sc_controller *controller;
-    struct sc_file_pusher *fp;
-    struct sc_screen *screen;
+    struct sc_controller* controller;
+    struct sc_file_pusher* fp;
+    struct sc_screen* screen;
 
-    struct sc_key_processor *kp;
-    struct sc_mouse_processor *mp;
+    struct sc_key_processor* kp;
+    struct sc_mouse_processor* mp;
 
     bool forward_all_clicks;
     bool legacy_paste;
@@ -42,28 +42,26 @@ struct sc_input_manager {
     SDL_Keycode last_keycode;
     uint16_t last_mod;
 
-    uint64_t next_sequence; // used for request acknowledgements
+    uint64_t next_sequence;  // used for request acknowledgements
 };
 
 struct sc_input_manager_params {
-    struct sc_controller *controller;
-    struct sc_file_pusher *fp;
-    struct sc_screen *screen;
-    struct sc_key_processor *kp;
-    struct sc_mouse_processor *mp;
+    struct sc_controller* controller;
+    struct sc_file_pusher* fp;
+    struct sc_screen* screen;
+    struct sc_key_processor* kp;
+    struct sc_mouse_processor* mp;
 
     bool forward_all_clicks;
     bool legacy_paste;
     bool clipboard_autosync;
-    const struct sc_shortcut_mods *shortcut_mods;
+    const struct sc_shortcut_mods* shortcut_mods;
 };
 
-void
-sc_input_manager_init(struct sc_input_manager *im,
-                      const struct sc_input_manager_params *params);
-
-void
-sc_input_manager_handle_event(struct sc_input_manager *im,
-                              const SDL_Event *event);
-
+void sc_input_manager_init(struct sc_input_manager* im, const struct sc_input_manager_params* params);
+void sc_input_manager_handle_event(struct sc_input_manager* im, const SDL_Event* event);
+void send_keycode(struct sc_input_manager* im, enum android_keycode keycode, enum sc_action action, const char* name);
+void apply_orientation_transform(struct sc_input_manager* im, enum sc_orientation transform);
+void set_screen_power_mode(struct sc_input_manager* im, enum sc_screen_power_mode mode);
+void rotate_device(struct sc_input_manager* im);
 #endif
